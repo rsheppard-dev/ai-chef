@@ -1,0 +1,105 @@
+﻿@page "/meal-ideas"
+
+@using AIChef.Shared
+@using System.Text.Json
+@using System.Text.Json.Serialization
+
+@inject NavigationManager navigationManager
+@inject HttpClient httpClient
+
+<PageTitle>AI Chef - Meal Ideas</PageTitle>
+
+@if (isLoading)
+{
+    <ChefSpinner />
+}
+else
+{
+    <div class="container mt-5">
+    <h1>Pick a meal to make</h1>
+
+    <div class="list-group">
+        @foreach (Idea idea in ideas)
+            {
+                <button @onclick="() => GetRecipe(idea.Index)"
+                    class="list-group-item list-group-item-action list-group-item-success p-2">
+                    <div class="d-flex w-100 justify-content-sm-between">
+                        <h2 class="mb-1 fw-bold">@idea.Title</h2>
+                    </div>
+                    <p class="mb-1">@idea.Description</p>
+                </button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter]
+    private RecipeState? recipeState { get; set; }
+
+    private readonly JsonSerializerOptions _jsonOptions = new()
+        {
+            PropertyNameCaseInsensitive = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        };
+
+    private List<Idea> ideas = new();
+    private bool isLoading = true;
+
+    protected override void OnInitialized()
+    {
+        if (recipeState is null)
+        {
+            navigationManager.NavigateTo("/", forceLoad: true);
+            return;
+        }
+
+        if (recipeState.Ideas.Count < 1)
+        {
+            GetIdeas();
+        }
+        else
+        {
+            ideas = recipeState.Ideas;
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async void GetIdeas()
+    {
+        string baseUri = "api/recipe/get-recipe-ideas";
+        isLoading = true;
+
+        RecipeParams recipeParams = new()
+            {
+                MealTime = recipeState?.MealTime ?? "Breakfast",
+                Ingredients = recipeState?.Ingredients ?? new List<Ingredient>()
+            };
+
+        // call web api controller
+        try
+        {
+            HttpResponseMessage response = await httpClient.PostAsJsonAsync(baseUri, recipeParams, _jsonOptions);
+
+            response.EnsureSuccessStatusCode();
+
+            ideas = await response.Content.ReadFromJsonAsync<List<Idea>>() ?? new List<Idea>();
+
+            if (recipeState is not null) recipeState.Ideas = ideas;
+
+            isLoading = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    private void GetRecipe(int id)
+    {
+        navigationManager.NavigateTo($"/meal-recipe/{id}");
+    }
+}
